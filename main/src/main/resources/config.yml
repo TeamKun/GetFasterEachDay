@@ -1,3 +1,4 @@
 Range: 10.0
-DayRate: 30
-EffectRate: 1
+DayRate: 120
+EffectRate: 1.0
+SpeedRate: 120.0
