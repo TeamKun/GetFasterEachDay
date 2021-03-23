@@ -1,0 +1,9 @@
+name: GetFasterEachDay
+version: ${project.version}
+main: net.kunmc.lab.getfastereachday.GetFasterEachDay
+api-version: 1.15
+authors: [ Bun133 ]
+website: https://twitter.com/bun133_
+commands:
+  gf:
+    usage: /<command> <start|end|change|status>
