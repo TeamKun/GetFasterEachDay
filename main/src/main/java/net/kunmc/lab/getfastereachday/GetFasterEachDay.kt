@@ -11,13 +11,17 @@ import org.bukkit.command.CommandExecutor
 import org.bukkit.command.CommandSender
 import org.bukkit.entity.LivingEntity
 import org.bukkit.entity.Player
+import org.bukkit.event.EventHandler
+import org.bukkit.event.Listener
+import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.plugin.java.JavaPlugin
 import org.bukkit.potion.PotionEffect
 import org.bukkit.potion.PotionEffectType
 import org.bukkit.scheduler.BukkitRunnable
 import org.w3c.dom.Attr
+import kotlin.math.roundToLong
 
-class GetFasterEachDay : JavaPlugin() {
+class GetFasterEachDay : JavaPlugin() , Listener{
     lateinit var manager: FasterManager
     lateinit var conf: ConfigManager
     override fun onEnable() {
@@ -27,10 +31,18 @@ class GetFasterEachDay : JavaPlugin() {
         manager = FasterManager(this)
         getCommand("gf")!!.setExecutor(GFCommand(this))
         getCommand("gf")!!.tabCompleter = GFCommand.gen()
+        server.pluginManager.registerEvents(this,this)
     }
 
     override fun onDisable() {
         // Plugin shutdown logic
+    }
+
+    @EventHandler
+    fun onPlayerLeave(e:PlayerQuitEvent){
+        val list = e.player.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED)!!.modifiers.filter { it.name === "GF" }
+        list.forEach { e.player.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED)!!.removeModifier(it) }
+        FasterManager.EFFECTS.forEach { e.player.removePotionEffect(it) }
     }
 }
 
@@ -58,8 +70,14 @@ class GFCommand(val plugin: GetFasterEachDay) : CommandExecutor {
                         "change"
                     ),
                     TabObject(
-                        "Range", "DayRate", "EffectRate", "SpeedRate", "EntityBoosted","Rate"
+                        "Range", "DayRate", "EffectRate", "SpeedRate", "EntityBoosted", "Rate"
                     )
+                ),
+                TabChain(
+                    TabObject("pause")
+                ),
+                TabChain(
+                    TabObject("skip")
                 )
             )
         }
@@ -128,6 +146,15 @@ class GFCommand(val plugin: GetFasterEachDay) : CommandExecutor {
                         }
                     }
                 }
+                "pause" -> {
+                    if(plugin.manager.isPaused){
+                        plugin.manager.pause(false)
+                        sender.sendMessage("ポーズ解除!")
+                    }else{
+                        plugin.manager.pause(true)
+                        sender.sendMessage("ポーズ開始!")
+                    }
+                }
 //                "c", "change" -> {
 //                    plugin.manager.change()
 //                    sender.sendMessage("Now Entity Boosted Value:${plugin.manager.EntityBoosted}")
@@ -137,27 +164,43 @@ class GFCommand(val plugin: GetFasterEachDay) : CommandExecutor {
                 }
             }
             return true
+        } else if (args.size == 2) {
+            when(args[0]){
+                "skip" -> {
+                    val float:Float? = args[1].toFloatOrNull()
+                    if(float == null){
+                        sender.sendMessage("倍率指定が不正です")
+                        return false
+                    }
+
+                    plugin.manager.skip(float)
+                    sender.sendMessage("${args[1]}倍に設定しました")
+                    return true
+                }
+
+                else -> return false
+            }
         } else if (args.size == 3) {
             when (args[0]) {
                 "change" -> {
                     when (args[1]) {
                         "Range" -> {
-                            if(args[2].toDoubleOrNull() == null) return false
+                            if (args[2].toDoubleOrNull() == null) return false
                             plugin.conf.Range = args[2].toDouble()
                             sender.sendMessage("Rangeを${args[2].toDouble()}に変更しました")
                         }
                         "DayRate" -> {
-                            if(args[2].toIntOrNull() == null) return false
+                            if (args[2].toIntOrNull() == null) return false
                             plugin.conf.DayRate = args[2].toInt()
                             sender.sendMessage("DayRateを${args[2].toInt()}に変更しました")
                         }
                         "EffectRate" -> {
-                            if(args[2].toDoubleOrNull() == null) return false
+                            if (args[2].toDoubleOrNull() == null) return false
                             plugin.conf.EffectRate = args[2].toDouble()
                             sender.sendMessage("EffectRateを${args[2].toDouble()}に変更しました")
                         }
                         "SpeedRate" -> {
-                            if(args[2].toDoubleOrNull() == null) return false
+                            if (args[2].toDoubleOrNull() == null) return false
                             plugin.conf.SpeedRate = args[2].toDouble()
                             sender.sendMessage("SpeedRateを${args[2].toDouble()}に変更しました")
                         }
@@ -166,13 +209,15 @@ class GFCommand(val plugin: GetFasterEachDay) : CommandExecutor {
                             sender.sendMessage("EntityBoostedを${args[2].toBoolean()}に変更しました")
                         }
                         "Rate" -> {
-                            if(args[2].toDoubleOrNull() == null) return false
+                            if (args[2].toDoubleOrNull() == null) return false
                             plugin.conf.SpeedRate = args[2].toDouble()
                             plugin.conf.DayRate = args[2].toInt()
                             sender.sendMessage("SpeedRateを${args[2].toDouble()}に変更しました")
                             sender.sendMessage("DayRateを${args[2].toInt()}に変更しました")
                         }
-                        else -> {return false}
+                        else -> {
+                            return false
+                        }
                     }
                     plugin.conf.save()
                     return true
@@ -196,6 +241,9 @@ class FasterManager(val plugin: GetFasterEachDay) : BukkitRunnable() {
 
     var EntityBoosted = true
 
+    var isPaused = false
+    private set
+
     fun start() {
         isGoingOn = true
         TickCount = 0
@@ -205,6 +253,15 @@ class FasterManager(val plugin: GetFasterEachDay) : BukkitRunnable() {
     fun end() {
         isGoingOn = false
         removeEffect()
+    }
+
+    fun pause(b:Boolean){
+        isPaused = b
+    }
+
+    fun skip(f:Float){
+        val v = f - 1 // 実際倍率
+        TickCount = (v * 20.0 * plugin.conf.DayRate).roundToLong()
     }
 
     private fun removeEffect() {
@@ -248,7 +305,9 @@ class FasterManager(val plugin: GetFasterEachDay) : BukkitRunnable() {
 
     override fun run() {
         if (isGoingOn) {
-            TickCount += 1
+            if(!isPaused){
+                TickCount += 1
+            }
 
 
             val effectLevel = effectLevel(TickCount, plugin.conf)
@@ -303,7 +362,7 @@ class FasterManager(val plugin: GetFasterEachDay) : BukkitRunnable() {
 
             val displaySkippedTick = (skipTick * 10).toInt().toDouble() / 10
             Bukkit.getOnlinePlayers().forEach { p ->
-                p.sendActionBar("${displaySkippedTick + 1}倍速 採掘速度レベル:${lastEffectLevel + 1}")
+                p.sendActionBar("${displaySkippedTick + 1}倍速")
             }
         }
     }
@@ -330,7 +389,7 @@ class FasterManager(val plugin: GetFasterEachDay) : BukkitRunnable() {
             return (ticks.toDouble() / 20.0) / config.DayRate
         }
 
-        private val EFFECTS = arrayListOf(PotionEffectType.FAST_DIGGING/*, PotionEffectType.SPEED*/)
+        val EFFECTS = arrayListOf(PotionEffectType.FAST_DIGGING/*, PotionEffectType.SPEED*/)
 
         fun getPower(ticks: Long, config: ConfigManager): Double {
 //            return ticks / config.PowerRate
@@ -359,11 +418,11 @@ class ConfigManager(val plugin: GetFasterEachDay) {
     //    val PowerRate = plugin.config.getDouble("PowerRate")
     var SpeedRate = plugin.config.getDouble("SpeedRate")
 
-    fun save(){
-        plugin.config.set("Range",Range)
-        plugin.config.set("DayRate",DayRate)
-        plugin.config.set("EffectRate",EffectRate)
-        plugin.config.set("SpeedRate",SpeedRate)
+    fun save() {
+        plugin.config.set("Range", Range)
+        plugin.config.set("DayRate", DayRate)
+        plugin.config.set("EffectRate", EffectRate)
+        plugin.config.set("SpeedRate", SpeedRate)
         plugin.saveConfig()
     }
 }

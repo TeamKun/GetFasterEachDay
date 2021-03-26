@@ -6,4 +6,4 @@ authors: [ Bun133 ]
 website: https://twitter.com/bun133_
 commands:
   gf:
-    usage: /<command> <start|end|change|status>
+    usage: /<command> <start|end|change|status|pause|skip>
